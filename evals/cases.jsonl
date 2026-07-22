@@ -1,0 +1,4 @@
+{"case_id":"shipping_question","message":"Is standard shipping free when my cart is exactly $75?","customer_id":null,"expected_route":"faq","expected_document":"KB-SHIP-001","expected_answer_contains":["$75","free standard shipping"]}
+{"case_id":"return_question","message":"Can I return something 30 days after it was delivered?","customer_id":null,"expected_route":"faq","expected_document":"KB-RET-001","expected_answer_contains":["day 30","eligible"]}
+{"case_id":"own_order_status","message":"Where is order ord_1002?","customer_id":"cus_001","expected_route":"order","expected_order_id":"ord_1002","expected_status":"shipped"}
+{"case_id":"other_customers_order","message":"Where is order ord_2001?","customer_id":"cus_001","expected_route":"order","expected_order_id":"ord_2001","expected_result":"not_found"}

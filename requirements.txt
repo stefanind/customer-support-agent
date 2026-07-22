@@ -1,0 +1,6 @@
+langchain-anthropic
+langchain-core
+langchain-text-splitters
+langgraph
+python-dotenv
+sentence-transformers
