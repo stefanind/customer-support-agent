@@ -91,3 +91,22 @@ class SupportGraphTests(unittest.TestCase):
         )
 
         self.assertEqual(result["route"], "faq")
+
+    def test_order_lookup_without_customer_requires_verification(self):
+        graph = build_support_graph(router=FakeRouter("order"))
+
+        result = run_support("Check ord_1002", None, graph=graph)
+
+        self.assertEqual(result["outcome"], "handoff")
+        self.assertIn("secure verification", result["answer"])
+        self.assertNotIn("shipped", result["answer"])
+        self.assertEqual(result["sources"], ["KB-ORD-001"])
+
+    def test_order_lookup_includes_delivery_estimate(self):
+        graph = build_support_graph(router=FakeRouter("order"))
+
+        result = run_support(
+            "When should ord_1002 arrive?", "cus_001", graph=graph
+        )
+
+        self.assertIn("2026-07-23", result["answer"])

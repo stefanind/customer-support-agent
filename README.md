@@ -12,7 +12,8 @@ whole suite for regressions.
 It currently handles two kinds of requests:
 
 - FAQ and product questions using RAG over Markdown documents.
-- Order-status questions using an authenticated customer ID and SQLite.
+- Order-status and delivery-estimate questions using an authenticated customer
+  ID and SQLite.
 
 ## Flow
 

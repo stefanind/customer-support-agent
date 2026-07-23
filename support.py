@@ -22,7 +22,7 @@ class RouteDecision(BaseModel):
 
 class SupportResult(TypedDict):
     route: Literal["faq", "order"]
-    outcome: Literal["answered", "clarify", "fallback", "not_found"]
+    outcome: Literal["answered", "clarify", "fallback", "handoff", "not_found"]
     answer: str
     sources: list[str]
 
@@ -32,7 +32,9 @@ class SupportState(TypedDict):
     customer_id: str | None
     route: NotRequired[Literal["faq", "order"]]
     order_id: NotRequired[str]
-    outcome: NotRequired[Literal["answered", "clarify", "fallback", "not_found"]]
+    outcome: NotRequired[
+        Literal["answered", "clarify", "fallback", "handoff", "not_found"]
+    ]
     answer: NotRequired[str]
     sources: NotRequired[list[str]]
 
@@ -79,11 +81,17 @@ def build_support_graph(vector_store=None, model=None, router=None):
                 "sources": [],
             }
 
-        order = (
-            get_order(state["customer_id"], state["order_id"])
-            if state["customer_id"]
-            else None
-        )
+        if not state["customer_id"]:
+            return {
+                "answer": (
+                    "Please complete secure verification before I can look up "
+                    "that order."
+                ),
+                "outcome": "handoff",
+                "sources": ["KB-ORD-001"],
+            }
+
+        order = get_order(state["customer_id"], state["order_id"])
 
         if not order:
             return {
@@ -92,8 +100,14 @@ def build_support_graph(vector_store=None, model=None, router=None):
                 "sources": [],
             }
 
+        answer = f"Order {state['order_id']} is {order['status']}."
+        if order["estimated_delivery_date"]:
+            answer += (
+                f" Its estimated delivery date is {order['estimated_delivery_date']}."
+            )
+
         return {
-            "answer": f"Order {state['order_id']} is {order['status']}.",
+            "answer": answer,
             "outcome": "answered",
             "sources": [],
         }
