@@ -1,65 +1,52 @@
-import json
 import unittest
-from pathlib import Path
 
+from langchain_core.documents import Document
 from langchain_core.messages import AIMessage
 
 from support import build_support_graph, run_support
 
 
-CASES_PATH = Path(__file__).parents[1] / "evals" / "cases.jsonl"
+class FakeVectorStore:
+    def similarity_search_with_score(self, _question, k):
+        chunk = Document(
+            page_content="Standard shipping is free at $75.",
+            metadata={"doc_id": "KB-SHIP-001", "section": "Shipping Charges"},
+        )
+        return [(chunk, 0.9)][:k]
 
 
-class EvaluationModel:
+class FakeModel:
     def __init__(self):
         self.calls = []
 
     def invoke(self, messages):
-        prompt = str(messages)
-        self.calls.append(prompt)
-
-        if "exactly $75" in prompt:
-            return AIMessage(content="At exactly $75, you receive free standard shipping.")
-        if "30 days" in prompt:
-            return AIMessage(content="A return requested on day 30 is eligible.")
-        raise AssertionError("Unexpected FAQ question")
+        self.calls.append(messages)
+        return AIMessage(content="Standard shipping is free at $75.")
 
 
 class SupportGraphTests(unittest.TestCase):
-    def test_all_evaluation_cases(self):
-        cases = [json.loads(line) for line in CASES_PATH.read_text().splitlines()]
-        model = EvaluationModel()
-        graph = build_support_graph(model=model)
-        saved_runs = []
+    def test_faq_returns_shared_result(self):
+        model = FakeModel()
+        graph = build_support_graph(vector_store=FakeVectorStore(), model=model)
 
-        for case in cases:
-            with self.subTest(case=case["case_id"]):
-                run = run_support(
-                    case["message"],
-                    case["customer_id"],
-                    graph=graph,
-                    saver=saved_runs.append,
-                )
+        result = run_support("Is shipping free at $75?", None, graph=graph)
 
-                self.assertEqual(run["metadata"]["route"], case["expected_route"])
-                self.assertIn("routing", run["timings_ms"])
-                self.assertIn("total", run["timings_ms"])
+        self.assertEqual(
+            result,
+            {
+                "route": "faq",
+                "outcome": "answered",
+                "answer": "Standard shipping is free at $75.",
+                "sources": ["KB-SHIP-001"],
+            },
+        )
+        self.assertEqual(len(model.calls), 1)
 
-                if case["expected_route"] == "faq":
-                    self.assertEqual(
-                        run["metadata"]["retrieved_sections"][0]["doc_id"],
-                        case["expected_document"],
-                    )
-                    self.assertIn("retrieval", run["timings_ms"])
-                    self.assertIn("generation", run["timings_ms"])
-                    for expected_text in case["expected_answer_contains"]:
-                        self.assertIn(expected_text, run["answer"])
-                elif "expected_status" in case:
-                    self.assertIn("order_lookup", run["timings_ms"])
-                    self.assertIn(case["expected_status"], run["answer"])
-                else:
-                    self.assertIn("order_lookup", run["timings_ms"])
-                    self.assertEqual(run["status"], case["expected_result"])
+    def test_order_lookup_requires_ownership(self):
+        own_order = run_support("Check ord_1002", "cus_001")
+        other_order = run_support("Check ord_2001", "cus_001")
 
-        self.assertEqual(len(model.calls), 2)
-        self.assertEqual(len(saved_runs), 4)
+        self.assertEqual(own_order["outcome"], "answered")
+        self.assertIn("shipped", own_order["answer"])
+        self.assertEqual(other_order["outcome"], "not_found")
+        self.assertEqual(other_order["answer"], "I couldn't find that order.")

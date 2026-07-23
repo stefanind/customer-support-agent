@@ -1,14 +1,10 @@
-import json
 import unittest
-from pathlib import Path
-from unittest.mock import mock_open, patch
 
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage
 
 from knowledge import load_public_sections, search_knowledge
 from rag import FALLBACK_ANSWER, build_rag_graph
-from tracking import save_run
 
 
 class FakeVectorStore:
@@ -39,17 +35,6 @@ def make_chunk(doc_id, section, content):
 
 
 class KnowledgeTests(unittest.TestCase):
-    def test_save_run_writes_one_json_line(self):
-        run = {"prompt": "Hello", "answer": "Hi", "timings_ms": {"total": 1.0}}
-        opened_file = mock_open()
-
-        with patch.object(Path, "mkdir"), patch.object(Path, "open", opened_file):
-            save_run(run, Path("runs.jsonl"))
-
-        written_text = opened_file().write.call_args.args[0]
-        self.assertEqual(json.loads(written_text), run)
-        self.assertTrue(written_text.endswith("\n"))
-
     def test_loads_only_public_markdown_sections(self):
         sections = load_public_sections()
         doc_ids = {document.metadata["doc_id"] for document in sections}
@@ -93,9 +78,8 @@ class KnowledgeTests(unittest.TestCase):
         result = graph.invoke({"question": "What is the capital of France?"})
 
         self.assertEqual(result["answer"], FALLBACK_ANSWER)
+        self.assertEqual(result["outcome"], "fallback")
         self.assertEqual(len(model.calls), 0)
-        self.assertFalse(result["model_called"])
-        self.assertEqual(result["timings_ms"]["generation"], 0.0)
 
     def test_answer_prompt_uses_two_chunks_and_one_model_call(self):
         chunks = [
@@ -109,10 +93,8 @@ class KnowledgeTests(unittest.TestCase):
         result = graph.invoke({"question": "Is shipping free at $75?"})
 
         self.assertIn("free at $75", result["answer"])
-        self.assertTrue(result["model_called"])
+        self.assertEqual(result["outcome"], "answered")
         self.assertEqual(len(result["chunks"]), 2)
-        self.assertEqual(set(result["timings_ms"]), {"retrieval", "generation"})
-        self.assertTrue(all(time >= 0 for time in result["timings_ms"].values()))
         self.assertEqual(len(model.calls), 1)
         prompt = str(model.calls[0])
         self.assertIn("Is shipping free at $75?", prompt)

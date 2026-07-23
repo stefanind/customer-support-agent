@@ -2,6 +2,13 @@
 
 This is a small read-only customer-support agent built with LangGraph.
 
+The project is being built iteratively around the realistic support scenarios in
+[`evals/cases.jsonl`](evals/cases.jsonl). That suite describes the customer
+questions and safety, privacy, routing, and order-handling problems the agent
+should eventually handle. Some cases intentionally fail today. Each iteration
+targets one category, adds the smallest useful capability, and then checks the
+whole suite for regressions.
+
 It currently handles two kinds of requests:
 
 - FAQ and product questions using RAG over Markdown documents.
@@ -54,7 +61,8 @@ result = run_support(
 )
 
 print(result["answer"])
-print(result["timings_ms"])
+print(result["outcome"])
+print(result["sources"])
 ```
 
 An authenticated order lookup looks like this:
@@ -69,8 +77,8 @@ result = run_support(
 In a real application, `customer_id` must come from the authenticated session,
 not from the customer's message.
 
-Each run is returned as a dictionary and appended to `data/runs.jsonl`. That file
-is ignored by Git because it contains raw prompts and answers.
+Every request returns the same four fields: `route`, `outcome`, `answer`, and
+`sources`. The controller uses this shared result regardless of which path ran.
 
 ## Run the tests
 
@@ -78,9 +86,28 @@ is ignored by Git because it contains raw prompts and answers.
 python -m unittest discover -s tests -v
 ```
 
-The automated tests use real Markdown retrieval and the real SQLite database.
+The tests cover document retrieval, the shared support-result contract, SQLite
+ownership checks, evaluation-dataset structure, and eval-runner message order.
 Claude is replaced with a fake model so tests do not require network access or
 spend API credits.
+
+## Run evaluations
+
+Run one category while developing a capability:
+
+```powershell
+python -m evals.run --category routing_clarification
+```
+
+Run the complete suite before finishing an iteration:
+
+```powershell
+python -m evals.run
+```
+
+The runner prints the expected behavior beside the actual result for manual
+review. Evaluation runs can call the real model and use API credits. See
+[`evals/README.md`](evals/README.md) for the evaluation workflow.
 
 ## Main files
 
@@ -88,8 +115,8 @@ spend API credits.
 - `rag.py`: FAQ retrieval-and-answer subgraph.
 - `knowledge.py`: Markdown chunking, MiniLM, and semantic search.
 - `database.py`: customer-owned order lookup.
-- `tracking.py`: timings and JSONL run records.
-- `evals/cases.jsonl`: the four MVP evaluation examples.
+- `evals/cases.jsonl`: the single 50-case product evaluation suite.
+- `evals/run.py`: category-filterable evaluation runner.
 
 ## Current limitations
 
