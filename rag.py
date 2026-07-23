@@ -27,7 +27,7 @@ class RAGState(TypedDict):
 
 # Load the model once, then reuse it.
 @lru_cache(maxsize=1)
-def get_answer_model():
+def get_model():
     load_dotenv()
     return ChatAnthropic(model="claude-haiku-4-5", temperature=0)
 
@@ -54,7 +54,7 @@ def build_rag_graph(vector_store=None, model=None):
                 "outcome": "fallback",
             }
 
-        answer_model = model or get_answer_model()
+        answer_model = model or get_model()
         response = answer_model.invoke(
             [
                 ("system", SYSTEM_PROMPT),

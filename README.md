@@ -19,7 +19,7 @@ It currently handles two kinds of requests:
 ```text
 customer message
       |
-    router
+ LLM router
    /      \
  FAQ      order
   |         |
@@ -28,8 +28,9 @@ customer message
      answer
 ```
 
-The router treats a message containing an ID such as `ord_1002` as an order
-question. All other messages use the FAQ path.
+The router uses structured model output to choose between a specific-order
+request and a general FAQ. The order path extracts an order ID with regular code
+and asks for it when it is missing.
 
 ## Setup
 
@@ -86,10 +87,10 @@ Every request returns the same four fields: `route`, `outcome`, `answer`, and
 python -m unittest discover -s tests -v
 ```
 
-The tests cover document retrieval, the shared support-result contract, SQLite
-ownership checks, evaluation-dataset structure, and eval-runner message order.
-Claude is replaced with a fake model so tests do not require network access or
-spend API credits.
+The tests cover document retrieval, routing behavior, the shared support-result
+contract, SQLite ownership checks, evaluation-dataset structure, and eval-runner
+message order. Claude is replaced with fake models so tests do not require
+network access or spend API credits.
 
 ## Run evaluations
 
@@ -117,9 +118,10 @@ review. Evaluation runs can call the real model and use API credits. See
 - `database.py`: customer-owned order lookup.
 - `evals/cases.jsonl`: the single 50-case product evaluation suite.
 - `evals/run.py`: category-filterable evaluation runner.
+- `ITERATIONS.md`: completed-version decisions and evaluation results.
 
 ## Current limitations
 
-- An order question must include an ID such as `ord_1002`.
+- The router currently recognizes only FAQ and order intents.
 - There is no conversation memory, API, or user interface.
 - The agent cannot cancel orders, create returns, or perform other writes.

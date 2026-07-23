@@ -3,7 +3,7 @@ import unittest
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage
 
-from support import build_support_graph, run_support
+from support import RouteDecision, build_support_graph, run_support
 
 
 class FakeVectorStore:
@@ -24,10 +24,22 @@ class FakeModel:
         return AIMessage(content="Standard shipping is free at $75.")
 
 
+class FakeRouter:
+    def __init__(self, route):
+        self.route = route
+
+    def invoke(self, _messages):
+        return RouteDecision(route=self.route)
+
+
 class SupportGraphTests(unittest.TestCase):
     def test_faq_returns_shared_result(self):
         model = FakeModel()
-        graph = build_support_graph(vector_store=FakeVectorStore(), model=model)
+        graph = build_support_graph(
+            vector_store=FakeVectorStore(),
+            model=model,
+            router=FakeRouter("faq"),
+        )
 
         result = run_support("Is shipping free at $75?", None, graph=graph)
 
@@ -43,10 +55,39 @@ class SupportGraphTests(unittest.TestCase):
         self.assertEqual(len(model.calls), 1)
 
     def test_order_lookup_requires_ownership(self):
-        own_order = run_support("Check ord_1002", "cus_001")
-        other_order = run_support("Check ord_2001", "cus_001")
+        graph = build_support_graph(router=FakeRouter("order"))
+        own_order = run_support("Check ord_1002", "cus_001", graph=graph)
+        other_order = run_support("Check ord_2001", "cus_001", graph=graph)
 
         self.assertEqual(own_order["outcome"], "answered")
         self.assertIn("shipped", own_order["answer"])
         self.assertEqual(other_order["outcome"], "not_found")
         self.assertEqual(other_order["answer"], "I couldn't find that order.")
+
+    def test_missing_order_id_asks_for_clarification(self):
+        graph = build_support_graph(router=FakeRouter("order"))
+
+        result = run_support("Where is my order?", "cus_001", graph=graph)
+
+        self.assertEqual(
+            result,
+            {
+                "route": "order",
+                "outcome": "clarify",
+                "answer": "What is your order ID?",
+                "sources": [],
+            },
+        )
+
+    def test_order_policy_can_use_faq_path(self):
+        graph = build_support_graph(
+            vector_store=FakeVectorStore(),
+            model=FakeModel(),
+            router=FakeRouter("faq"),
+        )
+
+        result = run_support(
+            "What is your order cancellation policy?", None, graph=graph
+        )
+
+        self.assertEqual(result["route"], "faq")

@@ -1,22 +1,28 @@
 import re
+from functools import lru_cache
 from typing import Literal, NotRequired, TypedDict
 
 from langgraph.graph import END, START, StateGraph
+from pydantic import BaseModel
 
 from database import get_order
-from rag import build_rag_graph, rag_graph
+from rag import build_rag_graph, get_model, rag_graph
 
 
 ORDER_ID_PATTERN = re.compile(r"\bord_\d+\b", re.IGNORECASE)
 ORDER_NOT_FOUND = "I couldn't find that order."
+ROUTER_PROMPT = """Classify the customer message as faq or order.
+Use order for help with a specific customer order, even when its ID is missing.
+Use faq for general policies, shipping, returns, warranties, or product help."""
 
 
-
+class RouteDecision(BaseModel):
+    route: Literal["faq", "order"]
 
 
 class SupportResult(TypedDict):
     route: Literal["faq", "order"]
-    outcome: Literal["answered", "fallback", "not_found"]
+    outcome: Literal["answered", "clarify", "fallback", "not_found"]
     answer: str
     sources: list[str]
 
@@ -26,12 +32,17 @@ class SupportState(TypedDict):
     customer_id: str | None
     route: NotRequired[Literal["faq", "order"]]
     order_id: NotRequired[str]
-    outcome: NotRequired[Literal["answered", "fallback", "not_found"]]
+    outcome: NotRequired[Literal["answered", "clarify", "fallback", "not_found"]]
     answer: NotRequired[str]
     sources: NotRequired[list[str]]
 
 
-def build_support_graph(vector_store=None, model=None):
+@lru_cache(maxsize=1)
+def get_router():
+    return get_model().with_structured_output(RouteDecision)
+
+
+def build_support_graph(vector_store=None, model=None, router=None):
     """Build the FAQ-or-order support graph."""
 
     faq_graph = (
@@ -41,9 +52,12 @@ def build_support_graph(vector_store=None, model=None):
     )
 
     def route(state: SupportState):
+        decision = (router or get_router()).invoke(
+            [("system", ROUTER_PROMPT), ("human", state["message"])]
+        )
         match = ORDER_ID_PATTERN.search(state["message"])
         return {
-            "route": "order" if match else "faq",
+            "route": decision.route,
             "order_id": match.group(0).lower() if match else "",
         }
 
@@ -58,6 +72,13 @@ def build_support_graph(vector_store=None, model=None):
         }
 
     def answer_order(state: SupportState):
+        if not state["order_id"]:
+            return {
+                "answer": "What is your order ID?",
+                "outcome": "clarify",
+                "sources": [],
+            }
+
         order = (
             get_order(state["customer_id"], state["order_id"])
             if state["customer_id"]

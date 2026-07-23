@@ -8,13 +8,15 @@ from support import run_support
 CASES_PATH = Path(__file__).with_name("cases.jsonl")
 
 
-def load_cases(category=None):
+def load_cases(category=None) -> list:
     cases = [
         json.loads(line)
         for line in CASES_PATH.read_text(encoding="utf-8").splitlines()
     ]
+
     if category:
         cases = [case for case in cases if case["category"] == category]
+        
     return cases
 
 

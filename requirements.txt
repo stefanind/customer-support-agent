@@ -2,5 +2,6 @@ langchain-anthropic
 langchain-core
 langchain-text-splitters
 langgraph
+pydantic
 python-dotenv
 sentence-transformers
